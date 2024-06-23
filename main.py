@@ -1,95 +1,132 @@
 import sys
 import pandas as pd
-from matplotlib import pyplot as plt
-import seaborn as sns
-import numpy as np
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier, GradientBoostingClassifier, StackingClassifier
+from sklearn.svm import SVC
+from sklearn.naive_bayes import GaussianNB
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
 
 if __name__ == '__main__':
     train_path = sys.argv[1]
-    test_path = sys.argv[2]
     train_df = pd.read_csv(train_path)
-    test_df = pd.read_csv(test_path)
-    print(f"Broj redova u train skupu: {len(train_df)}")
-    print(f"Broj redova u test skupu: {len(test_df)}")
 
-    X_train = train_df.drop('Stage', axis=1)
-    y_train = train_df['Stage']
-    X_test = test_df.drop('Stage', axis=1)
-    y_test = test_df['Stage']
+    features_to_drop = ['Survival_Months', 'Blood_Pressure_Systolic', 'Blood_Pressure_Diastolic', 
+                        'Age', 'Blood_Pressure_Pulse', 'Performance_Status', 'Patient_ID']
 
-    categorical_features = ['Gender', 'Smoking_History', 'Tumor_Location', 'Treatment', 'Ethnicity', 'Insurance_Type', 'Family_History']
-    numerical_features = ['Age', 'Tumor_Size_mm', 'Survival_Months', 'Performance_Status', 'Blood_Pressure_Systolic', 'Blood_Pressure_Diastolic', 
-                          'Blood_Pressure_Pulse', 'Hemoglobin_Level', 'White_Blood_Cell_Count', 'Platelet_Count', 'Albumin_Level', 
+    features_to_drop_existing = [feature for feature in features_to_drop if feature in train_df.columns]
+    train_df = train_df.drop(columns=features_to_drop_existing, errors='ignore')
+
+    X = train_df.drop('Stage', axis=1)
+    y = train_df['Stage']
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    categorical_features = [feature for feature in ['Gender', 'Smoking_History', 'Tumor_Location', 'Treatment', 'Ethnicity', 'Insurance_Type', 'Family_History'] if feature in X_train.columns]
+    numerical_features = [feature for feature in ['Tumor_Size_mm', 'Hemoglobin_Level', 'White_Blood_Cell_Count', 'Platelet_Count', 'Albumin_Level', 
                           'Alkaline_Phosphatase_Level', 'Alanine_Aminotransferase_Level', 'Aspartate_Aminotransferase_Level', 
                           'Creatinine_Level', 'LDH_Level', 'Calcium_Level', 'Phosphorus_Level', 'Glucose_Level', 'Potassium_Level', 
-                          'Sodium_Level', 'Smoking_Pack_Years']
+                          'Sodium_Level', 'Smoking_Pack_Years'] if feature in X_train.columns]
 
-    # Enkodiranje kategorijskih obeležja
-    encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
-    encoded_cats = encoder.fit_transform(train_df[categorical_features])
-    encoded_cats_df = pd.DataFrame(encoded_cats, columns=encoder.get_feature_names_out(categorical_features))
+    numerical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
 
-    # Spajanje numeričkih i enkodiranih kategorijskih obeležja
-    combined_df = pd.concat([train_df[numerical_features].reset_index(drop=True), encoded_cats_df.reset_index(drop=True)], axis=1)
-
-    # Analiza korelacije
-    cor = combined_df.corr()
-    upper_triangle = cor.where(np.triu(np.ones(cor.shape), k=1).astype(bool))
-    to_drop = [column for column in upper_triangle.columns if any(upper_triangle[column] > 0.9)]
-
-    # Uklanjanje visoko koreliranih obeležja
-    reduced_df = combined_df.drop(columns=to_drop)
-
-    # Kreiranje korrelacione matrice za kombinovana obeležja
-    plt.figure(figsize=(20, 15))
-    reduced_cor = reduced_df.corr()
-    sns.heatmap(reduced_cor, annot=True, cmap=plt.cm.Reds, fmt='.2f')
-    plt.show()
-
-    # Ažuriranje liste numeričkih i kategorijskih obeležja nakon uklanjanja visoko koreliranih
-    updated_numerical_features = [feature for feature in numerical_features if feature in reduced_df.columns]
-    updated_categorical_features = [feature for feature in categorical_features if any([col for col in reduced_df.columns if col.startswith(feature)])]
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+    ])
 
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', Pipeline(steps=[
-                ('imputer', SimpleImputer(strategy='mean')),
-                ('scaler', StandardScaler())]), updated_numerical_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), updated_categorical_features)
-        ])
+            ('num', numerical_transformer, numerical_features),
+            ('cat', categorical_transformer, categorical_features)
+        ]
+    )
 
-    # Ažurirani pipeline sa najboljim parametrima za RandomForestClassifier
-    pipeline = Pipeline(steps=[
+    # # Random Forest Classifier
+    clf_rf = RandomForestClassifier(
+        n_estimators=300,
+        max_depth=30,
+        min_samples_split=2,
+        min_samples_leaf=4
+    )
+
+    pipeline_rf = Pipeline(steps=[
         ('preprocessor', preprocessor),
-        ('classifier', RandomForestClassifier(
-            n_estimators=100, 
-            max_depth=30, 
-            min_samples_split=5, 
-            min_samples_leaf=1, 
-            random_state=42))
+        ('classifier', clf_rf)
     ])
 
-    # Treniranje modela
-    pipeline.fit(X_train, y_train)
+    pipeline_rf.fit(X_train, y_train)
+    y_pred_rf = pipeline_rf.predict(X_test)
 
-    # Analiza značaja obeležja
-    feature_importances = pipeline.named_steps['classifier'].feature_importances_
-    feature_names = updated_numerical_features + list(encoder.get_feature_names_out(updated_categorical_features))
-    feature_importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': feature_importances}).sort_values(by='Importance', ascending=False)
+    macro_f1_rf = f1_score(y_test, y_pred_rf, average='macro')
+    micro_f1_rf = f1_score(y_test, y_pred_rf, average='micro')
+    print(f"Random Forest - Macro F1 score: {macro_f1_rf}")
+    print(f"Random Forest - Micro F1 score: {micro_f1_rf}")
+    # # Voting Classifier
+    clf_svm = SVC(probability=True, C=0.1, kernel='rbf')
+    clf_nb = GaussianNB()
 
-    # Prikaz značaja obeležja
-    plt.figure(figsize=(10, 8))
-    sns.barplot(x='Importance', y='Feature', data=feature_importance_df)
-    plt.title('Značaj obeležja')
-    plt.show()
+    voting_clf = VotingClassifier(estimators=[
+        ('svm', clf_svm),
+        ('nb', clf_nb)
+    ], voting='soft')
 
-    # Predikcija i evaluacija
-    y_pred = pipeline.predict(X_test)
-    score = f1_score(y_test, y_pred, average='weighted')
-    print(f'F1 Score: {score}')
+    pipeline_voting = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', voting_clf)
+    ])
+
+    pipeline_voting.fit(X_train, y_train)
+    y_pred_voting = pipeline_voting.predict(X_test)
+
+    macro_f1_voting = f1_score(y_test, y_pred_voting, average='macro')
+    micro_f1_voting = f1_score(y_test, y_pred_voting, average='micro')
+    print(f"Voting Classifier - Macro F1 score: {macro_f1_voting}")
+    print(f"Voting Classifier - Micro F1 score: {micro_f1_voting}")
+    # # Gradient Boosting Classifier
+    clf_gb = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1)
+
+    pipeline_gb = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', clf_gb)
+    ])
+
+    pipeline_gb.fit(X_train, y_train)
+    y_pred_gb = pipeline_gb.predict(X_test)
+
+    macro_f1_gb = f1_score(y_test, y_pred_gb, average='macro')
+    micro_f1_gb = f1_score(y_test, y_pred_gb, average='micro')
+    print(f"Gradient Boosting - Macro F1 score: {macro_f1_gb}")
+    print(f"Gradient Boosting - Micro F1 score: {micro_f1_gb}")
+    # Stacking Classifier
+    estimators = [
+        ('svm', clf_svm),
+        ('gb', clf_gb),
+        ('nb', clf_nb)
+    ]
+    clf_stack = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression())
+
+    pipeline_stack = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', clf_stack)
+    ])
+
+    pipeline_stack.fit(X_train, y_train)
+    y_pred_stack = pipeline_stack.predict(X_test)
+
+    macro_f1_stack = f1_score(y_test, y_pred_stack, average='macro')
+    micro_f1_stack = f1_score(y_test, y_pred_stack, average='micro')
+    print(f"Stacking Classifier - Macro F1 score: {macro_f1_stack}")
+    print(f"Stacking Classifier - Micro F1 score: {micro_f1_stack}")
+
+   
+    
+    
+ 
