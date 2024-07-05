@@ -16,9 +16,27 @@ To get started with this project, follow these steps:
    cd ML-24-LungCancer
    ```
 
-3. Run the main script with the dataset:
+3. Set up a virtual environment:
+
+   - For Windows:
+     ```bash
+     python -m venv venv
+     .\venv\Scripts\activate
+     ```
+
+   - For Linux:
+     ```bash
+     python3 -m venv venv
+     source venv/bin/activate
+     ```
+
+4. Install the required dependencies:
    ```bash
-   python main.py data_set.csv
+   pip install -r requirements.txt
    ```
 
----
+5. Run the main script with the dataset:
+   ```bash
+   python3 main.py data_set.csv
+   ```
+```
