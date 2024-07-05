@@ -1,2 +1,24 @@
 # ML-24-LungCancer
+
 This project develops a machine learning model to accurately predict lung cancer stages using a synthetic dataset that mirrors real-world patient scenarios.
+
+## How to Clone and Run
+
+To get started with this project, follow these steps:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/branislavstojkovic70/ML-24-LungCancer
+   ```
+
+2. Navigate to the project directory:
+   ```bash
+   cd ML-24-LungCancer
+   ```
+
+3. Run the main script with the dataset:
+   ```bash
+   python main.py data_set.csv
+   ```
+
+---
