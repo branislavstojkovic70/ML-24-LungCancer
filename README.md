@@ -39,4 +39,3 @@ To get started with this project, follow these steps:
    ```bash
    python3 main.py data_set.csv
    ```
-```
